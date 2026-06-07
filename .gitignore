@@ -1,0 +1,36 @@
+# Environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# Security Configuration
+.env
+*.pem
+credentials.json
+aws_keys.csv
+
+# Hadoop Spark Oozie Logs
+*.log
+metastore_db/
+derby.log
+spark-warehouse/
+checkpoint/
+_SUCCESS
+.java-routing
+
+# Large Data Files
+*.csv
+*.parquet
+*.json
+*.avro
+*.snappy
+!shared_resources/data_csv/*.csv
+
+# System IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
