@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <workflow-app name="Stock_BigData_Pipeline_Advanced" xmlns="uri:oozie:workflow:0.4">
 
-    <start to="sqoop-import-node"/>
+    <start to="python-scrape-node"/>
+
+    <action name="python-scrape-node">
+        <shell xmlns="uri:oozie:shell-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <exec>python3</exec>
+            <argument>scrape_and_insert.py</argument>
+            <file>/user/hadoop/scripts/scrape_and_insert.py#scrape_and_insert.py</file>
+        </shell>
+        <ok to="sqoop-import-node"/>
+        <error to="fail"/>
+    </action>
 
     <action name="sqoop-import-node">
         <sqoop xmlns="uri:oozie:sqoop-action:0.4">

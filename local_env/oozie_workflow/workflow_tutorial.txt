@@ -1,133 +1,39 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<workflow-app name="Stock_BigData_Pipeline_Advanced" xmlns="uri:oozie:workflow:0.4">
+=== KỊCH BẢN WORKFLOW CHỐT CUỐI: TỰ ĐỘNG HÓA TỪ KHÂU CÀO DỮ LIỆU ĐẾN BACKUP ===
 
-    <start to="sqoop-import-node"/>
+Anh em chú ý, luồng Oozie đã được thiết kế lại để bọc luôn cả file Python cào dữ liệu vào vị trí đầu tiên. Khi Quân Bảo bấm chạy Oozie, nó sẽ tự động kích hoạt tiến trình 6 bước liên hoàn không cần con người can thiệp:
 
-    <action name="sqoop-import-node">
-        <sqoop xmlns="uri:oozie:sqoop-action:0.4">
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/quangduy/raw_data"/>
-            </prepare>
-            
-            <arg>import</arg>
-            <arg>--connect</arg>
-            <arg>jdbc:mysql://localhost:3306/bigdata_stock</arg>
-            <arg>--username</arg>
-            <arg>root</arg>
-            <arg>--password</arg>
-            <arg>password123</arg>
-            <arg>--table</arg>
-            <arg>tbl_raw_stock</arg>
-            <arg>--target-dir</arg>
-            <arg>/user/quangduy/raw_data</arg>
-            <arg>-m</arg>
-            <arg>1</arg>
-        </sqoop>
-        <ok to="hive-clean-node"/>
-        <error to="fail"/>
-    </action>
+[Bước 1] Cào dữ liệu & Insert MySQL (Quang Duy)
+- Nhiệm vụ: Oozie gọi file python có tên là scrape_and_insert.py.
+- Cơ chế: File này sẽ gọi API của vnstock/CafeF, lấy dữ liệu chứng khoán mới nhất về, sau đó MỞ KẾT NỐI trực tiếp đến MySQL Local và dùng lệnh "INSERT IGNORE" tống dữ liệu vừa cào được vào bảng tbl_raw_stock.
 
-    <action name="hive-clean-node">
-        <hive xmlns="uri:oozie:hive-action:0.2">
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/quangduy/cleaned_data"/>
-            </prepare>
-            <job-xml>/user/hadoop/scripts/hive-site.xml</job-xml>
-            <script>/user/hadoop/scripts/clean_data_advanced.hql</script>
-            <param>INPUT=/user/quangduy/raw_data</param>
-            <param>OUTPUT=/user/quangduy/cleaned_data</param>
-        </hive>
-        <ok to="mapreduce-python-node"/>
-        <error to="fail"/>
-    </action>
+[Bước 2] Kéo dữ liệu gốc lên HDFS (Sqoop Import - Phúc An)
+- Sau khi có dữ liệu trong MySQL, Oozie lập tức gọi Sqoop chui vào bảng tbl_raw_stock đó kéo ngược dữ liệu lên Hadoop.
+- Đường dẫn đích: /user/quangduy/raw_data
 
-    <action name="mapreduce-python-node">
-        <map-reduce>
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/hadoop/stock_result"/>
-            </prepare>
-            <configuration>
-                <property>
-                    <name>mapred.mapper.class</name>
-                    <value>org.apache.hadoop.mapred.lib.IdentityMapper</value>
-                </property>
-                <property>
-                    <name>mapred.reducer.class</name>
-                    <value>org.apache.hadoop.mapred.lib.IdentityReducer</value>
-                </property>
-                <property>
-                    <name>mapred.input.dir</name>
-                    <value>/user/quangduy/cleaned_data</value>
-                </property>
-                <property>
-                    <name>mapred.output.dir</name>
-                    <value>/user/hadoop/stock_result</value>
-                </property>
-                <property>
-                    <name>stream.map.streamprocessor</name>
-                    <value>python3 mapper.py</value>
-                </property>
-                <property>
-                    <name>stream.reduce.streamprocessor</name>
-                    <value>python3 reducer.py</value>
-                </property>
-            </configuration>
-            <file>/user/hadoop/scripts/mapper.py#mapper.py</file>
-            <file>/user/hadoop/scripts/reducer.py#reducer.py</file>
-        </map-reduce>
-        <ok to="kafka-stream-node"/>
-        <error to="fail"/>
-    </action>
+[Bước 3] Tiền xử lý dữ liệu (Apache Hive - Quang Duy)
+- Oozie gọi file clean_data_advanced.hql để dọn dẹp các giá trị rác, dữ liệu Null. 
+- Đường dẫn đích: /user/quangduy/cleaned_data
 
-    <action name="kafka-stream-node">
-        <shell xmlns="uri:oozie:shell-action:0.2">
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
-            <exec>python3</exec>
-            <argument>kafka_producer.py</argument>
-            <argument>/user/hadoop/stock_result</argument>
-            <file>/user/hadoop/scripts/kafka_producer.py#kafka_producer.py</file>
-        </shell>
-        <ok to="sqoop-backup-node"/>
-        <error to="fail"/>
-    </action>
+[Bước 4] Tính toán chỉ số tài chính (MapReduce Python - Cả nhóm)
+- Oozie gọi bộ đôi mapper.py và reducer.py để tính Trung bình giá, Khối lượng tổng, Độ biến động và đường trung bình động SMA. 
+- Đường dẫn đích: Kết quả xuất ra /user/hadoop/stock_result
 
-    <action name="sqoop-backup-node">
-        <sqoop xmlns="uri:oozie:sqoop-action:0.4">
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/hadoop/stock_backup"/>
-            </prepare>
-            
-            <arg>import</arg>
-            <arg>--connect</arg>
-            <arg>jdbc:mysql://localhost:3306/bigdata_stock</arg>
-            <arg>--username</arg>
-            <arg>root</arg>
-            <arg>--password</arg>
-            <arg>password123</arg>
-            <arg>--table</arg>
-            <arg>tbl_stock_analysis</arg>
-            <arg>--target-dir</arg>
-            <arg>/user/hadoop/stock_backup</arg>
-            <arg>-m</arg>
-            <arg>1</arg>
-        </sqoop>
-        <ok to="end"/>
-        <error to="fail"/>
-    </action>
+[Bước 5] Đẩy kết quả qua Kafka Stream (Nâng cấp thay Sqoop Export)
+- Oozie gọi file kafka_producer.py. File này nhặt kết quả từ MapReduce, băm thành message rồi ném vào hệ thống hàng đợi Kafka. Đầu bên kia sẽ có Kafka Consumer chạy ngầm tự động lấy và Insert/Update vào bảng tbl_stock_analysis trong MySQL.
 
-    <kill name="fail">
-        <message>Lỗi! Hệ thống Big Data dừng ở Node: [${wf:errorMessage(wf:lastErrorNode())}]</message>
-    </kill>
+[Bước 6] Sao lưu dự phòng an toàn (Sqoop Import - Phúc An)
+- Để tránh mất trắng dữ liệu nếu database sập, Sqoop sẽ kéo ngược bảng kết quả đó từ MySQL về cất trong thư mục an toàn.
+- Đường dẫn đích: /user/hadoop/stock_backup
 
-    <end name="end"/>
 
-</workflow-app>
+YÊU CẦU BẮT BUỘC KHI RÁP CODE
+--------------------------------------------------
+[!] Giao việc cho Quang Duy: Duy cần viết thêm 1 file "scrape_and_insert.py". Trong file này bắt buộc dùng thư viện "mysql.connector" hoặc "pymysql" để INSERT dữ liệu trực tiếp vào database.
+[!] Các file bắt buộc phải nộp cho Quân Bảo để đưa lên HDFS: 
+- workflow.xml
+- scrape_and_insert.py
+- clean_data_advanced.hql
+- hive-site.xml
+- mapper.py
+- reducer.py
+- kafka_producer.py
