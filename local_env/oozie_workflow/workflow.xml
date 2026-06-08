@@ -19,6 +19,9 @@
         <sqoop xmlns="uri:oozie:sqoop-action:0.4">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${nameNode}/user/quangduy/raw_data"/>
+            </prepare>
             
             <arg>import</arg>
             <arg>--connect</arg>
@@ -33,8 +36,7 @@
             <arg>/user/quangduy/raw_data</arg>
             <arg>-m</arg>
             <arg>1</arg>
-            <arg>--append</arg>
-        </sqoop>
+            </sqoop>
         <ok to="hive-clean-node"/>
         <error to="fail"/>
     </action>

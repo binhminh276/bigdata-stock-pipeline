@@ -1,35 +1,35 @@
 === KỊCH BẢN WORKFLOW CHỐT CUỐI: TỰ ĐỘNG HÓA TỪ KHÂU CÀO DỮ LIỆU ĐẾN BACKUP ===
-=================== (CẬP NHẬT: CƠ CHẾ TÍCH LŨY LỊCH SỬ VÀ KAFKA) ===================
+================ (CẬP NHẬT: TỐI ƯU Ổ CỨNG XÓA RAW CŨ - TÍCH LŨY CLEANED) ================
 
-Anh em chú ý, luồng tự động Oozie đã được thiết kế lại toàn diện, bọc luôn cả file Python cào dữ liệu vào vị trí đầu tiên và chuyển sang cơ chế lưu trữ tích lũy (giữ lịch sử, không xóa file cũ). Khi Quân Bảo bấm kích hoạt, hệ thống sẽ chạy liên hoàn qua 6 bước sau:
+Anh em chú ý, luồng tự động Oozie đã được thiết kế lại toàn diện. Điểm nâng cấp lớn nhất là tối ưu ổ cứng: Dữ liệu thô (Raw) cồng kềnh sẽ bị xóa sau khi xử lý xong, chỉ lưu giữ lịch sử vĩnh viễn ở dạng Dữ liệu sạch (Cleaned). Khi Quân Bảo bấm kích hoạt, hệ thống chạy liên hoàn 6 bước sau:
 
 [Bước 1] Cào dữ liệu & Đổ vào trạm chứa tạm (Python Script - Quang Duy)
 - Nhiệm vụ: Oozie gọi file "scrape_and_insert.py".
-- Cơ chế: File này sẽ gọi API của vnstock/CafeF lấy dữ liệu mới nhất của 5 ngân hàng, sau đó mở kết nối trực tiếp vào MySQL Local, dùng lệnh "INSERT IGNORE" hoặc "ON DUPLICATE KEY UPDATE" để đẩy vào bảng tbl_raw_stock. 
-- Ý nghĩa: Bảng tbl_raw_stock lúc này đóng vai trò là Trạm chứa tạm (Staging Area) trước khi đưa vào Hadoop.
+- Cơ chế: Cào API của vnstock/CafeF lấy dữ liệu mới nhất, sau đó mở kết nối trực tiếp vào MySQL Local, dùng lệnh "INSERT IGNORE" hoặc "ON DUPLICATE KEY UPDATE" đẩy vào bảng tbl_raw_stock. 
+- Ý nghĩa: Bảng tbl_raw_stock đóng vai trò là Trạm chứa tạm (Staging Area). Cuối tuần anh em tự chạy lệnh TRUNCATE dọn dẹp MySQL cho nhẹ máy.
 
-[Bước 2] Kéo dữ liệu tích lũy lên Data Lake (Sqoop Import - Phúc An)
-- Nhiệm vụ: Kéo dữ liệu thô từ MySQL lên HDFS.
-- Cơ chế: Chạy lệnh Sqoop Import với tham số "--append". Lệnh này sẽ không xóa thư mục cũ mà tự động nối tiếp dữ liệu mới vào đuôi file cũ để giữ lại lịch sử vĩnh viễn.
+[Bước 2] Kéo Raw Data lên HDFS theo cơ chế XÓA CŨ - CHỨA MỚI (Sqoop Import - Phúc An)
+- Nhiệm vụ: Kéo dữ liệu thô từ trạm MySQL lên HDFS.
+- Cơ chế: Để tránh tràn ổ cứng máy ảo, Oozie sẽ tự động xóa sạch thư mục Raw cũ trên HDFS trước khi Import dữ liệu mới vào. Thư mục Raw lúc này chỉ là trạm trung chuyển.
 - Đường dẫn đích: /user/quangduy/raw_data/
 
-[Bước 3] Tiền xử lý và làm sạch dữ liệu (Apache Hive - Quang Duy)
-- Nhiệm vụ: Oozie gọi file kịch bản "clean_data_advanced.hql" của Duy.
-- Cơ chế: Đọc file thô từ thư mục của Duy, thực hiện lọc rác, xóa Null, ép kiểu dữ liệu. Kết quả được ghi dồn (INSERT INTO) để tích lũy lịch sử ngày này qua ngày khác.
+[Bước 3] Tiền xử lý và lưu TÍCH LŨY LỊCH SỬ (Apache Hive - Quang Duy)
+- Nhiệm vụ: Oozie gọi script "clean_data_advanced.hql" của Duy.
+- Cơ chế: Đọc file thô vừa kéo về, lọc rác, ép kiểu. Quan trọng nhất: Kết quả được ghi dồn (INSERT INTO TABLE) nối đuôi vào kho lịch sử ngày này qua ngày khác. Đây chính là "trái tim" Data Lake của cả hệ thống.
 - Đường dẫn đích: /user/quangduy/cleaned_data/
 
 [Bước 4] Tính toán chỉ số tài chính Big Data (MapReduce Python - Cả nhóm)
-- Nhiệm vụ: Hadoop Streaming kích hoạt bộ đôi "mapper.py" và "reducer.py" (file tổng hợp thuật toán của cả 5 người).
-- Cơ chế: Đọc dữ liệu sạch tích lũy từ thư mục của Duy để tính toán: Giá đóng cửa trung bình, Tổng khối lượng, Độ biến động giá, và Đường trung bình động SMA. Do MapReduce yêu cầu thư mục đầu ra chưa tồn tại, bước này vẫn giữ thẻ <delete> để dọn rác thư mục kết quả tạm trước khi chạy.
+- Nhiệm vụ: Kích hoạt "mapper.py" và "reducer.py".
+- Cơ chế: Quét TOÀN BỘ kho dữ liệu sạch tích lũy ở Bước 3 để tính toán (Giá TB, Khối lượng, Biến động, đường SMA). Bước này hệ thống tự động xóa kết quả của ngày hôm qua để ghi đè kết quả mới nhất.
 - Đường dẫn đích: /user/hadoop/stock_result/
 
 [Bước 5] Đẩy kết quả qua hàng đợi thông điệp (Apache Kafka Stream - Cả nhóm)
-- Cải tiến cốt lõi: Thay vì dùng Sqoop Export đẩy thẳng vào MySQL dễ gây nghẽn/sập database, hệ thống chuyển sang dùng kiến trúc thông điệp trung gian Kafka.
-- Cơ chế: Oozie gọi file "kafka_producer.py" để đọc kết quả từ thư mục stock_result, biến dữ liệu thành các Event Message rồi bắn vào Kafka Topic. Ở bên ngoài, file Kafka Consumer (chạy ngầm 24/7) sẽ nhặt các tin nhắn này ra và INSERT/UPDATE vào bảng kết quả "tbl_stock_analysis" trong MySQL.
+- Cải tiến cốt lõi: Tránh nghẽn MySQL bằng kiến trúc trung gian Kafka.
+- Cơ chế: Oozie gọi file "kafka_producer.py" đọc kết quả MapReduce, biến thành Event Message bắn vào Kafka Topic. Ở ngoài, file Kafka Consumer (chạy ngầm 24/7) sẽ nhặt tin nhắn và INSERT/UPDATE vào bảng "tbl_stock_analysis" trong MySQL.
 
 [Bước 6] Sao lưu dự phòng an toàn (Sqoop Import Backup - Phúc An)
-- Nhiệm vụ: Tạo bản sao dự phòng cho dữ liệu phân tích ngay trên Hadoop.
-- Cơ chế: Chạy lệnh Sqoop Import với tham số "--append" để kéo ngược bảng kết quả tbl_stock_analysis từ MySQL về lưu trữ tích lũy lâu dài trên HDFS.
+- Nhiệm vụ: Tạo bản sao dự phòng cho dữ liệu phân tích.
+- Cơ chế: Chạy lệnh Sqoop Import với tham số "--append" để kéo ngược bảng kết quả tbl_stock_analysis từ MySQL về lưu dồn tích lũy trên HDFS, đề phòng sập RDS/MySQL.
 - Đường dẫn đích: /user/hadoop/stock_backup/
 
 
@@ -39,25 +39,24 @@ YÊU CẦU BẤT BUỘC VÀ PHÂN CÔNG CHO TỪNG THÀNH VIÊN KHI RÁP CODE
 
 1. QUÂN BẢO (Kiến trúc & Điều phối):
 - Chuẩn bị sẵn máy ảo Local (Bật Hadoop, Oozie, MySQL, Kafka).
-- Tạo sẵn các thư mục trống trên HDFS (/user/quangduy/raw_data, /user/quangduy/cleaned_data, v.v.).
-- Chép file "mysql-connector-java.jar" vào thư mục lib của Oozie trên HDFS.
-- Gom toàn bộ file script của mọi người nộp lại và đưa lên thư mục: /user/hadoop/scripts/
+- Cấu hình thư mục rỗng và đưa toàn bộ file của anh em nộp vào: /user/hadoop/scripts/
+- Chép file "mysql-connector-java.jar" vào thư mục lib của Oozie.
 
 2. QUANG DUY (Thu thập & Tiền xử lý):
-- Viết file "scrape_and_insert.py": Phải import thư viện mysql.connector (hoặc pymysql) để kết nối và INSERT dữ liệu vào bảng tbl_raw_stock.
-- Viết file "clean_data_advanced.hql": Đọc dữ liệu từ đường dẫn mới. TUYỆT ĐỐI KHÔNG dùng lệnh "INSERT OVERWRITE", bắt buộc phải dùng lệnh "INSERT INTO TABLE ..." để giữ lại lịch sử tích lũy trên HDFS.
+- File "scrape_and_insert.py": Phải import thư viện kết nối MySQL để INSERT trực tiếp.
+- File "clean_data_advanced.hql": Đọc dữ liệu từ /raw_data. TUYỆT ĐỐI KHÔNG dùng "INSERT OVERWRITE", bắt buộc dùng "INSERT INTO TABLE ..." để đổ dồn dữ liệu sạch bảo vệ lịch sử.
 
 3. PHÚC AN (Luân chuyển & Sao lưu):
-- Cấu hình lệnh Sqoop Import ở Bước 2 và Bước 6: Phải cài thêm tham số "--append" ở cuối dòng lệnh.
+- Lệnh Sqoop Bước 2: BỎ tham số "--append" (để hệ thống ghi đè Raw Data).
+- Lệnh Sqoop Bước 6: BẮT BUỘC có tham số "--append" (để sao lưu tích lũy).
 
-4. BÌNH MINH & THƯỞNG (Lớp Giao tiếp & Ứng dụng độc lập ngoài Oozie):
-- Đoạn code thuật toán MapReduce (Tính giá trung bình của Minh, tính độ biến động của Thưởng) bắt buộc phải nộp cho Bảo để gộp chung vào file chạy lõi.
-- Ngoài luồng Oozie chạy cuối ngày: 
-  + Bình Minh phụ trách bật dịch vụ Apache Drillbit 24/7, cấu hình kết nối HDFS và MySQL để làm cổng truy vấn SQL phân tán.
-  + Thưởng phụ trách bật Web Streamlit 24/7, kết nối xuyên qua cổng Apache Drill của Minh để lấy kết quả từ bảng tbl_stock_analysis lên vẽ biểu đồ Candlestick và đường SMA.
+4. BÌNH MINH & THƯỞNG (Giao tiếp & Ứng dụng - Chạy độc lập ngoài Oozie):
+- Code thuật toán MapReduce của 2 ông nộp cho Bảo để gộp chung vào file lõi.
+- Bình Minh: Cấu hình Apache Drillbit chạy ngầm 24/7, đóng vai trò cổng truy vấn SQL xuyên thủng HDFS và MySQL.
+- Thưởng: Web Streamlit kết nối qua Drill để lấy dữ liệu vẽ Dashboard.
 
 
-DANH SÁCH FILE BẮT BUỘC PHẢI CÓ TRÊN THƯ MỤC /user/hadoop/scripts/
+DANH SÁCH 7 FILE BẮT BUỘC PHẢI CÓ ĐỂ CHẠY HỆ THỐNG
 ------------------------------------------------------------------------------------
 1. workflow.xml (File cấu hình luồng tự động)
 2. hive-site.xml (File cấu hình kết nối của Hive)
@@ -65,4 +64,4 @@ DANH SÁCH FILE BẮT BUỘC PHẢI CÓ TRÊN THƯ MỤC /user/hadoop/scripts/
 4. clean_data_advanced.hql (Script Hive làm sạch của Duy)
 5. mapper.py (Code Map chung của nhóm)
 6. reducer.py (Code Reduce chung của nhóm)
-7. kafka_producer.py (Code Python đẩy dữ liệu vào Kafka của nhóm)
+7. kafka_producer.py (Code Python đẩy dữ liệu vào Kafka)
