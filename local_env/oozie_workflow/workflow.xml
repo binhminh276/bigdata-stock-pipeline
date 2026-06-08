@@ -19,9 +19,6 @@
         <sqoop xmlns="uri:oozie:sqoop-action:0.4">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/quangduy/raw_data"/>
-            </prepare>
             
             <arg>import</arg>
             <arg>--connect</arg>
@@ -36,6 +33,7 @@
             <arg>/user/quangduy/raw_data</arg>
             <arg>-m</arg>
             <arg>1</arg>
+            <arg>--append</arg>
         </sqoop>
         <ok to="hive-clean-node"/>
         <error to="fail"/>
@@ -45,9 +43,6 @@
         <hive xmlns="uri:oozie:hive-action:0.2">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/quangduy/cleaned_data"/>
-            </prepare>
             <job-xml>/user/hadoop/scripts/hive-site.xml</job-xml>
             <script>/user/hadoop/scripts/clean_data_advanced.hql</script>
             <param>INPUT=/user/quangduy/raw_data</param>
@@ -114,9 +109,6 @@
         <sqoop xmlns="uri:oozie:sqoop-action:0.4">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/hadoop/stock_backup"/>
-            </prepare>
             
             <arg>import</arg>
             <arg>--connect</arg>
@@ -131,6 +123,7 @@
             <arg>/user/hadoop/stock_backup</arg>
             <arg>-m</arg>
             <arg>1</arg>
+            <arg>--append</arg>
         </sqoop>
         <ok to="end"/>
         <error to="fail"/>
