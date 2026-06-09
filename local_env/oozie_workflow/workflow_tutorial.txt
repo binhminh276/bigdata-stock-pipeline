@@ -1,90 +1,67 @@
 === KỊCH BẢN WORKFLOW CHỐT CUỐI: TỰ ĐỘNG HÓA TỪ CÀO DỮ LIỆU ĐẾN KAFKA ===
-================ (CẬP NHẬT MỚI: BỎ BACKUP SQOOP - DÙNG SPARK GOM DATA KAFKA) ================
+============== (CẬP NHẬT KIẾN TRÚC DELTA LOAD - CHỐT THEO BIMI) =============
 
-Anh em chú ý, luồng tự động Oozie đã được thiết kế lại toàn diện thành 5 BƯỚC siêu gọn nhẹ. Điểm nâng cấp lớn nhất là loại bỏ thao tác Backup MySQL vô nghĩa (vì HDFS đã là pháo đài an toàn), đồng thời đưa PySpark vào làm chốt chặn cuối để gom 10 luồng MapReduce tránh nghẽn cổ chai.
+Anh em chú ý, luồng tự động Oozie đã được thiết kế lại toàn diện thành 5 BƯỚC siêu gọn nhẹ. Kiến trúc hiện tại hoạt động theo chuẩn Delta Load: Cào dữ liệu mới -> MySQL (Ghi đè) -> HDFS Raw (Ghi đè) -> HDFS Clean (Ghi nối).
 
-Khi Quân Bảo bấm kích hoạt, hệ thống sẽ chạy liên hoàn 5 bước sau:
+Khi Quân Bảo bấm kích hoạt Oozie, hệ thống sẽ chạy liên hoàn 5 bước sau:
 
-[Bước 1] Cào dữ liệu & Đổ vào trạm chứa tạm (Python Script - Quang Duy)
+[Bước 1] Cào dữ liệu mới & Ghi đè trạm MySQL (Python Script - Quang Duy)
+- Nhiệm vụ: Oozie gọi file scrape_and_insert.py.
+- Cơ chế: Quét bảng tbl_bank_list xem Web yêu cầu cào mã nào -> CHỈ CÀO DỮ LIỆU NGÀY HÔM NAY (tránh nhân đôi lịch sử) -> Tạo file CSV tạm để chống tràn RAM -> Dùng lệnh TRUNCATE xóa sạch bảng MySQL cũ -> Đẩy dữ liệu mới vào bảng tbl_raw_stock -> Xóa file CSV tạm.
+- Ý nghĩa: Bảng tbl_raw_stock lúc này chỉ là Trạm trung chuyển (Staging Area), KHÔNG chứa lịch sử mà chỉ chứa dữ liệu tươi mới nhất của ngày hôm đó để làm nhẹ máy ảo.
 
-Nhiệm vụ: Oozie gọi file scrape_and_insert.py.
+[Bước 2] Kéo dữ liệu lên HDFS Raw (Sqoop Import - Phúc An)
+- Nhiệm vụ: Kéo dữ liệu từ trạm MySQL lên HDFS.
+- Cơ chế: Oozie tự động xóa sạch thư mục Raw cũ trên HDFS, sau đó Sqoop Import dữ liệu của ngày hôm nay từ MySQL lên. (Cơ chế GHI ĐÈ)
+- Đường dẫn đích chuẩn: /user/hadoop/stock_raw/
 
-Cơ chế: Cào API của vnstock/CafeF lấy dữ liệu mới nhất, sau đó mở kết nối trực tiếp vào MySQL Local, dùng lệnh INSERT IGNORE đẩy vào bảng tbl_raw_stock.
-
-Ý nghĩa: Bảng tbl_raw_stock đóng vai trò là Trạm chứa tạm (Staging Area). Cuối tuần anh em tự chạy lệnh TRUNCATE dọn dẹp MySQL cho nhẹ máy.
-
-[Bước 2] Kéo Raw Data lên HDFS theo cơ chế XÓA CŨ - CHỨA MỚI (Sqoop Import - Phúc An)
-
-Nhiệm vụ: Kéo dữ liệu thô từ trạm MySQL lên HDFS.
-
-Cơ chế: Để tránh tràn ổ cứng, Oozie sẽ tự động xóa sạch thư mục Raw cũ trên HDFS trước khi Import dữ liệu mới.
-
-Đường dẫn đích chuẩn: /user/hadoop/stock_raw/
-
-[Bước 3] Tiền xử lý và lưu TÍCH LŨY LỊCH SỬ (Apache Hive - Quang Duy)
-
-Nhiệm vụ: Oozie gọi script clean_data_advanced.hql của Duy.
-
-Cơ chế: Đọc file thô vừa kéo về, lọc rác, ép kiểu. Kết quả được ghi dồn (INSERT INTO TABLE) nối đuôi vào kho lịch sử. Đây chính là "trái tim" Data Lake. Dữ liệu sạch xuất ra 2 định dạng: Parquet (cho Spark) và CSV (cho MapReduce).
-
-Đường dẫn đích chuẩn: * /user/hadoop/stock_cleaned/ (Dạng Parquet)
-
-/user/hadoop/stock_cleaned_csv/ (Dạng CSV)
+[Bước 3] Tiền xử lý và Tích lũy kho lịch sử (Apache Hive - Quang Duy)
+- Nhiệm vụ: Oozie gọi script clean_data_advanced.hql của Duy.
+- Cơ chế: Đọc dữ liệu Raw của ngày hôm nay, làm sạch, ép kiểu. Sau đó tiến hành GHI NỐI (Append) phần dữ liệu sạch này vào kho HDFS Cleaned. Kho HDFS Cleaned chính là "Két sắt lịch sử" của toàn hệ thống, ngày càng to ra.
+- Đường dẫn đích chuẩn: 
+  * /user/hadoop/stock_cleaned/ (Dạng Parquet cho Spark)
+  * /user/hadoop/stock_cleaned_csv/ (Dạng CSV cho MapReduce)
 
 [Bước 4] Tính toán đồng loạt 10 Task bằng Hadoop Streaming (MapReduce - Cả nhóm)
-
-Nhiệm vụ: Kích hoạt kịch bản run_all_mapreduce.sh.
-
-Cơ chế: Quét TOÀN BỘ kho dữ liệu sạch CSV. Hệ thống kích hoạt đồng thời 10 cụm Mapper/Reducer để tính 10 bài toán khác nhau. Kết quả xuất ra chuẩn JSON.
-
-Đường dẫn đích chuẩn: /user/hadoop/stock_result/result_mr_[task]/
+- Nhiệm vụ: Kích hoạt kịch bản run_all_mapreduce.sh.
+- Cơ chế: Quét TOÀN BỘ kho dữ liệu sạch CSV. Hệ thống kích hoạt đồng thời 10 cụm Mapper/Reducer để tính 10 bài toán khác nhau. Kết quả xuất ra chuẩn JSON.
+- Đường dẫn đích chuẩn: /user/hadoop/stock_result/result_mr_[task]/
 
 [Bước 5] PySpark gom dữ liệu & Bắn qua Kafka (Spark + Kafka - Cả nhóm)
+- Cải tiến cốt lõi: Thay vì 10 MapReduce tranh nhau bắn Kafka, PySpark sẽ đứng ra làm quản lý.
+- Cơ chế: Oozie gọi file spark_join_kafka.py. Spark sẽ dùng tốc độ RAM quét sạch 10 thư mục kết quả ở Bước 4, gom lại thành một cục Dataframe duy nhất, sau đó biến thành Message đẩy lên Kafka Topic. Phía ngoài, Kafka Consumer nhặt tin và đổ vào bảng MySQL tbl_stock_analysis.
 
-Cải tiến cốt lõi: Thay vì 10 MapReduce tranh nhau bắn Kafka, PySpark sẽ đứng ra làm quản lý.
-
-Cơ chế: Oozie gọi file spark_join_kafka.py. Spark sẽ dùng tốc độ RAM quét sạch 10 thư mục kết quả ở Bước 4, gom lại thành một cục Dataframe duy nhất, sau đó biến thành Message đẩy lên Kafka Topic. Phía ngoài, Kafka Consumer nhặt tin và đổ vào bảng MySQL tbl_stock_analysis.
-
+---------------------------------------------------------
 YÊU CẦU BẮT BUỘC VÀ PHÂN CÔNG TỪNG THÀNH VIÊN KHI RÁP CODE
+---------------------------------------------------------
+
 1. QUÂN BẢO (Kiến trúc & Điều phối):
-
-Chuẩn bị sẵn máy ảo Local (Bật Hadoop, Oozie, MySQL, Kafka, Spark).
-
-Đảm bảo cấu trúc thư mục máy ảo chuẩn xác: Code ngoài Home (/home/hadoop/), code MR vào thư mục mapreduce/, code Spark vào bigdata_spark/.
-
-Quản lý file Oozie workflow.xml bản 89 dòng mới nhất.
+- Chuẩn bị sẵn máy ảo Local (Bật Hadoop, Oozie, MySQL, Kafka, Spark).
+- Quản lý file Oozie workflow.xml. Lưu ý ở Node Hive ĐÃ XÓA thẻ <prepare> (thẻ delete folder), anh em KHÔNG được tự ý thêm vào kẻo Oozie xóa mất sạch dữ liệu lịch sử trên HDFS.
 
 2. QUANG DUY (Thu thập & Tiền xử lý):
-
-File clean_data_advanced.hql: TUYỆT ĐỐI KHÔNG dùng INSERT OVERWRITE, bắt buộc dùng INSERT INTO TABLE để đổ dồn dữ liệu sạch. Phải đảm bảo tạo ra cả bảng Parquet và bảng CSV phân tách bằng dấu phẩy.
+- File clean_data_advanced.hql: BẮT BUỘC phải dùng lệnh INSERT INTO TABLE (để Ghi nối/Append). TUYỆT ĐỐI KHÔNG dùng INSERT OVERWRITE, nếu không toàn bộ dữ liệu cào các ngày trước đó sẽ bị bay màu hoàn toàn.
 
 3. PHÚC AN (Luân chuyển dữ liệu):
-
-Lệnh Sqoop ở Bước 2: BỎ tham số --append (hệ thống sẽ tự động ghi đè Raw Data theo thẻ delete của Oozie).
-
-Chính thức NGỪNG phát triển tác vụ Sqoop Backup ở cuối luồng.
+- Sqoop cứ chạy lệnh Import bình thường, KHÔNG CẦN tham số --append. Việc xóa và ghi đè Raw Data thì Oozie đã tự lo.
+- Chính thức NGỪNG phát triển tác vụ Sqoop Backup ở cuối luồng.
 
 4. CẢ NHÓM (Tính toán MapReduce):
-
-Tất cả các file Reducer nộp cho Bảo BẮT BUỘC phải xuất ra định dạng chuỗi JSON {"symbol": "...", "value": ...}. Đầu ra cấm dùng định dạng Tab hay Phẩy.
+- Tất cả các file Reducer nộp cho Bảo BẮT BUỘC phải xuất ra định dạng chuỗi JSON {"symbol": "...", "value": ...}. Cấm dùng định dạng Tab hay Phẩy.
 
 5. BÌNH MINH & THƯỞNG (Giao tiếp & Ứng dụng - Chạy độc lập ngoài Oozie):
+- Bình Minh: Viết file Kafka Consumer chạy ngầm hứng JSON từ Spark thả vào MySQL. Cấu hình Apache Drillbit làm cổng truy vấn xuyên HDFS và MySQL.
+- Thưởng: Thiết kế Web Streamlit đảm nhận 2 vai trò: 
+  1. Điều khiển hệ thống: Có form CRUD (Thêm/Sửa/Xóa) mã ngân hàng, ghi thẳng xuống bảng tbl_bank_list trong MySQL để hệ thống biết đường cào.
+  2. Trực quan hóa: Kết nối qua Apache Drill/MySQL để bốc dữ liệu lên vẽ Dashboard.
 
-Bình Minh: Viết file Kafka Consumer chạy ngầm hứng JSON từ Spark thả vào MySQL. Cấu hình Apache Drillbit làm cổng truy vấn xuyên HDFS và MySQL.
-
-Thưởng: Thiết kế Web Streamlit kết nối qua Drill/MySQL để lấy dữ liệu vẽ Dashboard.
-
+---------------------------------------------------------
 DANH SÁCH 6 FILE/THƯ MỤC CỐT LÕI BẮT BUỘC PHẢI CÓ
+---------------------------------------------------------
 Anh em lưu ý, toàn bộ code phải tuân thủ đúng tên và vị trí này trên máy ảo:
-
-/home/hadoop/workflow.xml: File cấu hình luồng Oozie tự động (Bản 89 dòng).
-
-/home/hadoop/scrape_and_insert.py: Code cào dữ liệu từ API ném vào MySQL (Của Duy).
-
-/home/hadoop/clean_data_advanced.hql: Script Hive dọn rác và ép kiểu (Của Duy).
-
-/home/hadoop/mapreduce/run_all_mapreduce.sh: Kịch bản Bash gọi 10 lệnh Hadoop Streaming chạy song song.
-
-/home/hadoop/mapreduce/ (Thư mục): Chứa toàn bộ 20 file Mapper/Reducer của 10 Task.
-
-/home/hadoop/bigdata_spark/spark_join_kafka.py: Code PySpark gom 10 file kết quả và làm Producer đẩy lên Kafka.
+1. /home/hadoop/workflow.xml: File cấu hình luồng Oozie tự động.
+2. /home/hadoop/scrape_and_insert.py: Code cào dữ liệu Delta ném vào MySQL (Của Duy).
+3. /home/hadoop/clean_data_advanced.hql: Script Hive dọn rác và ghi nối lịch sử (Của Duy).
+4. /home/hadoop/mapreduce/run_all_mapreduce.sh: Kịch bản Bash gọi 10 lệnh Hadoop Streaming chạy song song.
+5. /home/hadoop/mapreduce/ (Thư mục): Chứa toàn bộ 20 file Mapper/Reducer của 10 Task.
+6. /home/hadoop/bigdata_spark/spark_join_kafka.py: Code PySpark gom 10 file kết quả và làm Producer đẩy lên Kafka.

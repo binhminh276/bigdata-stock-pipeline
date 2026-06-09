@@ -28,7 +28,8 @@
             <arg>--username</arg>
             <arg>root</arg>
             <arg>--password</arg>
-            <arg>123456</arg> <arg>--table</arg>
+            <arg>123456</arg> 
+            <arg>--table</arg>
             <arg>tbl_raw_stock</arg>
             <arg>--target-dir</arg>
             <arg>/user/hadoop/stock_raw</arg>
@@ -43,10 +44,6 @@
         <hive xmlns="uri:oozie:hive-action:0.2">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            <prepare>
-                <delete path="${nameNode}/user/hadoop/stock_cleaned"/>
-                <delete path="${nameNode}/user/hadoop/stock_cleaned_csv"/>
-            </prepare>
             <job-xml>/home/hadoop/hive/conf/hive-site.xml</job-xml>
             <script>/home/hadoop/clean_data_advanced.hql</script>
         </hive>

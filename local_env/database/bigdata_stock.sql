@@ -3,20 +3,64 @@ CREATE DATABASE IF NOT EXISTS bigdata_stock;
 USE bigdata_stock;
 
 -- ====================================================================
+-- BẢNG DANH MỤC: Quản lý danh sách các mã ngân hàng cần cào (CRUD từ Web)
+-- Bảng này liên kết trực tiếp với giao diện Web Streamlit của Thưởng
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS tbl_bank_list (
+    id INT AUTO_INCREMENT,
+    symbol VARCHAR(10) NOT NULL,
+    bank_name VARCHAR(100),
+    source VARCHAR(50), -- Nền tảng cào dữ liệu (CafeF, TCBS, FireAnt)
+    status INT DEFAULT 1, -- 1: Đang kích hoạt cào, 0: Tạm ngưng cào
+    PRIMARY KEY (id),
+    UNIQUE KEY (symbol) -- Đảm bảo không bị trùng lặp mã ngân hàng
+);
+
+-- BƠM ĐẦY ĐỦ 20 MÃ NGÂN HÀNG THEO NGUỒN CHUẨN CỦA NHÓM
+INSERT INTO tbl_bank_list (symbol, bank_name, source, status) VALUES
+-- Nhóm 1: Nguồn cào CafeF (8 Mã)
+('VCB', 'Vietcombank', 'CafeF', 1),
+('BID', 'BIDV', 'CafeF', 1),
+('CTG', 'VietinBank', 'CafeF', 1),
+('MBB', 'MBBank', 'CafeF', 1),
+('TCB', 'Techcombank', 'CafeF', 1),
+('VPB', 'VPBank', 'CafeF', 1),
+('ACB', 'ACB', 'CafeF', 1),
+('STB', 'Sacombank', 'CafeF', 1),
+
+-- Nhóm 2: Nguồn cào TCBS (8 Mã)
+('SHB', 'SHB', 'TCBS', 1),
+('HDB', 'HDBank', 'TCBS', 1),
+('VIB', 'VIB', 'TCBS', 1),
+('TPB', 'TPBank', 'TCBS', 1),
+('EIB', 'Eximbank', 'TCBS', 1),
+('MSB', 'MSB', 'TCBS', 1),
+('SSB', 'SeABank', 'TCBS', 1),
+('LPB', 'LPBank', 'TCBS', 1),
+
+-- Nhóm 3: Nguồn cào FireAnt (4 Mã)
+('OCB', 'OCB', 'FireAnt', 1),
+('NAB', 'NamA_Bank', 'FireAnt', 1),
+('KLB', 'KienLongBank', 'FireAnt', 1),
+('BVB', 'BaoVietBank', 'FireAnt', 1);
+
+-- ====================================================================
 -- BẢNG 1: Chứa dữ liệu thô (Duy cào về đổ vào đây, An dùng Sqoop kéo đi)
+-- Đã chuẩn hóa tên cột viết hoa chữ cái đầu để đồng bộ luồng Big Data
 -- ====================================================================
 CREATE TABLE IF NOT EXISTS tbl_raw_stock (
-    symbol VARCHAR(10) NOT NULL,
-    trading_date DATE NOT NULL,
-    scrape_time DATETIME NOT NULL,
-    source VARCHAR(50),
-    close_price DECIMAL(10, 2) NOT NULL,
-    volume BIGINT NOT NULL,
-    open_price DECIMAL(10, 2),
-    high_price DECIMAL(10, 2),
-    low_price DECIMAL(10, 2),
-    PRIMARY KEY (symbol, trading_date)
+    Symbol VARCHAR(10) NOT NULL,
+    Trading_Date DATE NOT NULL,
+    Scrape_Time DATETIME NOT NULL,
+    Source VARCHAR(50),
+    Close DECIMAL(10, 2) NOT NULL,
+    Volume BIGINT NOT NULL,
+    Open DECIMAL(10, 2),
+    High DECIMAL(10, 2),
+    Low DECIMAL(10, 2),
+    PRIMARY KEY (Symbol, Trading_Date)
 );
+
 
 -- ====================================================================
 -- BẢNG 2A: Kết quả phân tích theo NGÀY & TÍCH LŨY LỊCH SỬ
@@ -39,6 +83,7 @@ CREATE TABLE tbl_stock_daily_analysis (
     sma_price DECIMAL(10, 2),             -- Đường SMA (Tính thêm phục vụ web đồ thị)
     PRIMARY KEY (symbol, calc_date)
 );
+
 
 -- ====================================================================
 -- BẢNG 2B: Kết quả phân tích gom nhóm theo THÁNG
