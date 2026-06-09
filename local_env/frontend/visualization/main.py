@@ -1,44 +1,19 @@
-from dal import fetch_data_from_drill
-import bll
-
-def main():
-    vm_ip = "100.80.217.65"
-    query = """
-    SELECT 
-        columns[0] AS symbol,
-        columns[1] AS trading_date,
-        columns[2] AS scrape_time,
-        columns[3] AS source,
-        columns[4] AS close,
-        columns[5] AS volume,
-        columns[6] AS open,
-        columns[7] AS high,
-        columns[8] AS low
-    FROM table(dfs.`/user/hadoop/stock_cleaned_csv/000000_0` (type => 'text', fieldDelimiter => ',', extractHeader => false)) 
-    LIMIT 20000
-    """
-    
-    df = fetch_data_from_drill(vm_ip, query)
-    
-    if not df.empty:
-        if 'symbol' not in df.columns:
-            print("Loi: Khong tim thay cot 'symbol'. Danh sach cot hien tai:")
-            print(df.columns.tolist())
-            return
-            
-        target_symbol = 'ACB'
-        
-        bll.plot_close_price_line(df, target_symbol)
-        bll.plot_volume_bar(df, target_symbol)
-        bll.plot_candlestick(df, target_symbol)
-        bll.plot_price_boxplot(df)
-        bll.plot_volume_price_scatter(df, target_symbol)
-        bll.plot_close_price_histogram(df, target_symbol)
-        bll.plot_moving_average(df, target_symbol)
-        
-        print("Da ve va luu 7 bieu do thanh cong.")
-    else:
-        print("Khong lay duoc du lieu hoac du lieu trong.")
+from data_access import DataAccessLayer
+from business_logic import BusinessLogicLayer
+from presentation import PresentationLayer
 
 if __name__ == "__main__":
-    main()
+    vm_ip = "100.80.217.65"
+    hdfs_path = "/user/hadoop/stock_cleaned_csv"
+    
+    dal = DataAccessLayer(vm_ip, hdfs_path)
+    bll = BusinessLogicLayer(dal)
+    gui = PresentationLayer(bll)
+    
+    # gui.plot_intraday_price_volume(symbol="VCB", target_date="2026-06-09")
+    # gui.plot_intraday_vwap(symbol="VCB", target_date="2026-06-09")
+    gui.plot_daily_candlestick(symbol="VIB", start_date="2026-06-01", end_date="2026-06-09")
+    # gui.plot_daily_moving_average(symbol="VCB", start_date="2025-01-01", end_date="2026-06-09")
+    # gui.plot_daily_volume(symbol="VCB", start_date="2026-05-01", end_date="2026-06-09")
+    # gui.plot_monthly_volatility(symbol="VCB", target_year="2025")
+    # gui.plot_yearly_stacked_volume(target_years=[2024, 2025, 2026])
