@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<workflow-app name="Stock_BigData_Pipeline_Advanced" xmlns="uri:oozie:workflow:0.4">
+<workflow-app name="Stock_BigData_Pipeline_Final" xmlns="uri:oozie:workflow:0.4">
 
     <start to="python-scrape-node"/>
 
@@ -9,7 +9,7 @@
             <name-node>${nameNode}</name-node>
             <exec>python3</exec>
             <argument>scrape_and_insert.py</argument>
-            <file>/user/hadoop/scripts/scrape_and_insert.py#scrape_and_insert.py</file>
+            <file>/home/hadoop/scrape_and_insert.py#scrape_and_insert.py</file>
         </shell>
         <ok to="sqoop-import-node"/>
         <error to="fail"/>
@@ -20,23 +20,21 @@
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
             <prepare>
-                <delete path="${nameNode}/user/quangduy/raw_data"/>
+                <delete path="${nameNode}/user/hadoop/stock_raw"/>
             </prepare>
-            
             <arg>import</arg>
             <arg>--connect</arg>
             <arg>jdbc:mysql://localhost:3306/bigdata_stock</arg>
             <arg>--username</arg>
             <arg>root</arg>
             <arg>--password</arg>
-            <arg>password123</arg>
-            <arg>--table</arg>
+            <arg>123456</arg> <arg>--table</arg>
             <arg>tbl_raw_stock</arg>
             <arg>--target-dir</arg>
-            <arg>/user/quangduy/raw_data</arg>
+            <arg>/user/hadoop/stock_raw</arg>
             <arg>-m</arg>
             <arg>1</arg>
-            </sqoop>
+        </sqoop>
         <ok to="hive-clean-node"/>
         <error to="fail"/>
     </action>
@@ -45,88 +43,39 @@
         <hive xmlns="uri:oozie:hive-action:0.2">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            <job-xml>/user/hadoop/scripts/hive-site.xml</job-xml>
-            <script>/user/hadoop/scripts/clean_data_advanced.hql</script>
-            <param>INPUT=/user/quangduy/raw_data</param>
-            <param>OUTPUT=/user/quangduy/cleaned_data</param>
-        </hive>
-        <ok to="mapreduce-python-node"/>
-        <error to="fail"/>
-    </action>
-
-    <action name="mapreduce-python-node">
-        <map-reduce>
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
             <prepare>
-                <delete path="${nameNode}/user/hadoop/stock_result"/>
+                <delete path="${nameNode}/user/hadoop/stock_cleaned"/>
+                <delete path="${nameNode}/user/hadoop/stock_cleaned_csv"/>
             </prepare>
-            <configuration>
-                <property>
-                    <name>mapred.mapper.class</name>
-                    <value>org.apache.hadoop.mapred.lib.IdentityMapper</value>
-                </property>
-                <property>
-                    <name>mapred.reducer.class</name>
-                    <value>org.apache.hadoop.mapred.lib.IdentityReducer</value>
-                </property>
-                <property>
-                    <name>mapred.input.dir</name>
-                    <value>/user/quangduy/cleaned_data</value>
-                </property>
-                <property>
-                    <name>mapred.output.dir</name>
-                    <value>/user/hadoop/stock_result</value>
-                </property>
-                <property>
-                    <name>stream.map.streamprocessor</name>
-                    <value>python3 mapper.py</value>
-                </property>
-                <property>
-                    <name>stream.reduce.streamprocessor</name>
-                    <value>python3 reducer.py</value>
-                </property>
-            </configuration>
-            <file>/user/hadoop/scripts/mapper.py#mapper.py</file>
-            <file>/user/hadoop/scripts/reducer.py#reducer.py</file>
-        </map-reduce>
-        <ok to="kafka-stream-node"/>
+            <job-xml>/home/hadoop/hive/conf/hive-site.xml</job-xml>
+            <script>/home/hadoop/clean_data_advanced.hql</script>
+        </hive>
+        <ok to="mapreduce-tasks-node"/>
         <error to="fail"/>
     </action>
 
-    <action name="kafka-stream-node">
+    <action name="mapreduce-tasks-node">
         <shell xmlns="uri:oozie:shell-action:0.2">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            <exec>python3</exec>
-            <argument>kafka_producer.py</argument>
-            <argument>/user/hadoop/stock_result</argument>
-            <file>/user/hadoop/scripts/kafka_producer.py#kafka_producer.py</file>
+            <exec>sh</exec>
+            <argument>run_all_mapreduce.sh</argument>
+            <file>/home/hadoop/mapreduce/run_all_mapreduce.sh#run_all_mapreduce.sh</file>
         </shell>
-        <ok to="sqoop-backup-node"/>
+        <ok to="pyspark-join-kafka-node"/>
         <error to="fail"/>
     </action>
 
-    <action name="sqoop-backup-node">
-        <sqoop xmlns="uri:oozie:sqoop-action:0.4">
+    <action name="pyspark-join-kafka-node">
+        <shell xmlns="uri:oozie:shell-action:0.2">
             <job-tracker>${jobTracker}</job-tracker>
             <name-node>${nameNode}</name-node>
-            
-            <arg>import</arg>
-            <arg>--connect</arg>
-            <arg>jdbc:mysql://localhost:3306/bigdata_stock</arg>
-            <arg>--username</arg>
-            <arg>root</arg>
-            <arg>--password</arg>
-            <arg>password123</arg>
-            <arg>--table</arg>
-            <arg>tbl_stock_analysis</arg>
-            <arg>--target-dir</arg>
-            <arg>/user/hadoop/stock_backup</arg>
-            <arg>-m</arg>
-            <arg>1</arg>
-            <arg>--append</arg>
-        </sqoop>
+            <exec>spark-submit</exec>
+            <argument>--packages</argument>
+            <argument>org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2</argument>
+            <argument>spark_join_kafka.py</argument>
+            <file>/home/hadoop/bigdata_spark/spark_join_kafka.py#spark_join_kafka.py</file>
+        </shell>
         <ok to="end"/>
         <error to="fail"/>
     </action>
