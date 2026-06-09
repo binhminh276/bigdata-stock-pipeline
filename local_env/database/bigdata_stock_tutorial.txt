@@ -1,0 +1,72 @@
+=== QUY ƯỚC CHUNG HỆ THỐNG DATABASE ĐỒ ÁN (BẢN CẬP NHẬT V2.0 - KAFKA & 10 MAPREDUCE) ===
+
+Đây là "Bản hợp đồng" cấu trúc dữ liệu bắt buộc. Tất cả file Python (Cào data, MapReduce, Kafka) và Web (Streamlit) phải dùng CHÍNH XÁC tên cột và bảng dưới đây. Tuyệt đối KHÔNG tự ý đổi tên để tránh sập luồng tự động Oozie.
+
+--------------------------------------------------
+1. THÔNG SỐ KẾT NỐI DATABASE (LOCAL)
+--------------------------------------------------
+- Host: localhost hoặc 127.0.0.1 
+- Port: 3306
+- Database Name: bigdata_stock
+
+
+--------------------------------------------------
+2. BẢNG 1: TRẠM CHỨA DỮ LIỆU THÔ - tbl_raw_stock
+--------------------------------------------------
+(Dùng cho Script Python cào dữ liệu và Sqoop Import lên HDFS)
+
+- symbol (String): Mã cổ phiếu
+- trading_date (Date - YYYY-MM-DD): Ngày giao dịch
+- scrape_time (Datetime): Thời điểm cào
+- source (String): Nguồn (VD: CafeF, vnstock)
+- close_price (Decimal): Giá đóng cửa
+- volume (BigInt): Khối lượng
+- open_price (Decimal): Giá mở cửa
+- high_price (Decimal): Giá cao nhất
+- low_price (Decimal): Giá thấp nhất
+
+[!] LƯU Ý CHO QUANG DUY (Code cào dữ liệu):
+Bảng đã cài Khóa chính là (symbol, trading_date). Khi code lệnh INSERT vào MySQL, bắt buộc dùng "INSERT IGNORE" hoặc "ON DUPLICATE KEY UPDATE" để tránh lỗi sập code khi cào lại dữ liệu trùng ngày.
+
+
+--------------------------------------------------
+3. BẢNG 2A: KẾT QUẢ PHÂN TÍCH NGÀY - tbl_stock_daily_analysis
+--------------------------------------------------
+(Dùng chứa kết quả từ Kafka Consumer đẩy vào và Streamlit lấy lên vẽ biểu đồ)
+
+- symbol (String): Mã CP (Hoặc chữ 'MARKET' cho toàn thị trường)
+- calc_date (Date): Ngày chốt số liệu
+- total_volume (BigInt): Tổng khối lượng giao dịch
+- max_close_price (Decimal): Giá đóng cửa cao nhất lịch sử
+- min_close_price (Decimal): Giá đóng cửa thấp nhất lịch sử
+- up_days_count (Int): Số ngày tăng giá tích lũy
+- down_days_count (Int): Số ngày giảm giá tích lũy
+- max_volume_date (Date): Ngày có KLGD lớn nhất
+- max_volume_value (BigInt): Khối lượng của ngày kỷ lục đó
+- max_intraday_volatility (Decimal): Biên độ dao động lớn nhất (High-Low)
+- liquidity_status (String): Trạng thái thanh khoản (Cao/Vừa/Thấp)
+- max_intraday_drop (Decimal): Mức sụt giảm lớn nhất trong ngày
+- sma_price (Decimal): Đường trung bình động SMA
+
+[!] KHÓA CHÍNH: (symbol, calc_date)
+
+
+--------------------------------------------------
+4. BẢNG 2B: KẾT QUẢ PHÂN TÍCH THÁNG - tbl_stock_monthly_analysis
+--------------------------------------------------
+(Dùng chứa kết quả gom nhóm theo tháng từ Kafka Consumer)
+
+- symbol (String): Mã cổ phiếu
+- calc_year (Int): Năm (VD: 2026)
+- calc_month (Int): Tháng (VD: 6)
+- monthly_avg_close (Decimal): Trung bình giá đóng cửa tháng
+- monthly_total_volume (BigInt): Tổng khối lượng giao dịch tháng
+
+[!] KHÓA CHÍNH: (symbol, calc_year, calc_month)
+
+
+--------------------------------------------------
+5. LƯU Ý RÁP CODE SỐNG CÒN DÀNH CHO CẢ NHÓM
+--------------------------------------------------
+- [TEAM MAPREDUCE & KAFKA]: SQOOP EXPORT ĐÃ BỊ LOẠI BỎ. Khi code Reducer xuất kết quả, file "kafka_producer.py" sẽ nhặt và ném vào Kafka. Người viết "Kafka Consumer" phải hứng dữ liệu này và tự viết câu lệnh INSERT/UPDATE phân luồng chính xác vào Bảng 2A hoặc 2B.
+- [THƯỞNG - STREAMLIT WEB]: Thưởng không cần tính toán gì thêm trên Web. Chỉ việc "SELECT * FROM tbl_stock_daily_analysis" hoặc "tbl_stock_monthly_analysis" (thông qua Apache Drill) để lấy số liệu sạch lên đắp vào các Dashboard biểu đồ.
