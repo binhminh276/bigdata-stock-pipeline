@@ -9,8 +9,10 @@ for line in sys.stdin:
         try:
             symbol = parts[0]
             date = parts[1]
-            close = float(parts[4])
+            volume = int(parts[5])
             
-            print(f"{symbol}\t{date}\t{close}")
+            year, month, _ = date.split('-')
+            
+            print(f"{symbol}\t{year}\t{month}\t{volume}")
         except ValueError:
             continue

@@ -3,45 +3,55 @@ import sys
 import json
 
 current_symbol = None
-max_close = float('-inf')
-min_close = float('inf')
-last_date = None
+records = []
+
+# Xử lý tính toán giá trị min/max luỹ kế, tích hợp tính năng lọc trùng lặp
+def process_symbol(symbol, records):
+    unique_records = {}
+    for date, close in records:
+        unique_records[date] = close
+        
+    sorted_dates = sorted(unique_records.keys())
+    
+    max_close = float('-inf')
+    min_close = float('inf')
+    
+    for date in sorted_dates:
+        close = unique_records[date]
+        
+        if close > max_close:
+            max_close = close
+        if close < min_close:
+            min_close = close
+            
+        output_dict = {
+            "symbol": symbol,
+            "calc_date": date,
+            "max_close_price": round(max_close, 2),
+            "min_close_price": round(min_close, 2)
+        }
+        print(json.dumps(output_dict))
 
 for line in sys.stdin:
     line = line.strip()
     try:
-        symbol, values = line.split('\t')
-        t_date, close_str = values.split(',')
-        close_price = float(close_str)
-    except ValueError:
+        parts = line.split('\t')
+        if len(parts) != 3:
+            continue
+            
+        sym = parts[0]
+        date = parts[1]
+        close = float(parts[2])
+        
+        if current_symbol == sym:
+            records.append((date, close))
+        else:
+            if current_symbol:
+                process_symbol(current_symbol, records)
+            current_symbol = sym
+            records = [(date, close)]
+    except Exception:
         continue
 
-    if current_symbol == symbol:
-        if close_price > max_close:
-            max_close = close_price
-        if close_price < min_close:
-            min_close = close_price
-        last_date = t_date
-    else:
-        if current_symbol:
-            output_dict = {
-                "symbol": current_symbol,
-                "calc_date": last_date,
-                "max_close_price": max_close,
-                "min_close_price": min_close
-            }
-            print(json.dumps(output_dict))
-
-        current_symbol = symbol
-        max_close = close_price
-        min_close = close_price
-        last_date = t_date
-
 if current_symbol:
-    output_dict = {
-        "symbol": current_symbol,
-        "calc_date": last_date,
-        "max_close_price": max_close,
-        "min_close_price": min_close
-    }
-    print(json.dumps(output_dict))
+    process_symbol(current_symbol, records)
