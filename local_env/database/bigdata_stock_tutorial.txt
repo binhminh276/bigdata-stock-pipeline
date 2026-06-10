@@ -26,7 +26,7 @@
 - low_price (Decimal): Giá thấp nhất
 
 [!] LƯU Ý CHO QUANG DUY (Code cào dữ liệu):
-Bảng đã cài Khóa chính là (symbol, trading_date). Khi code lệnh INSERT vào MySQL, bắt buộc dùng "INSERT IGNORE" hoặc "ON DUPLICATE KEY UPDATE" để tránh lỗi sập code khi cào lại dữ liệu trùng ngày.
+Bảng đã cài Khóa chính là (symbol, scrape_time). Khi code lệnh INSERT vào MySQL, bắt buộc dùng "INSERT IGNORE" hoặc "ON DUPLICATE KEY UPDATE" để tránh lỗi sập code khi cào lại dữ liệu trùng ngày.
 
 
 --------------------------------------------------

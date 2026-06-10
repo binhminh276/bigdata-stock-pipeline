@@ -1,19 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <workflow-app name="Stock_BigData_Pipeline_Final" xmlns="uri:oozie:workflow:0.4">
 
-    <start to="python-scrape-node"/>
-
-    <action name="python-scrape-node">
-        <shell xmlns="uri:oozie:shell-action:0.2">
-            <job-tracker>${jobTracker}</job-tracker>
-            <name-node>${nameNode}</name-node>
-            <exec>python3</exec>
-            <argument>scrape_and_insert.py</argument>
-            <file>/home/hadoop/scrape_and_insert.py#scrape_and_insert.py</file>
-        </shell>
-        <ok to="sqoop-import-node"/>
-        <error to="fail"/>
-    </action>
+    <start to="sqoop-import-node"/>
 
     <action name="sqoop-import-node">
         <sqoop xmlns="uri:oozie:sqoop-action:0.4">
@@ -69,9 +57,9 @@
             <name-node>${nameNode}</name-node>
             <exec>spark-submit</exec>
             <argument>--packages</argument>
-            <argument>org.apache.spark:spark-sql-kafka-0-10_2.12:3.1.2</argument>
-            <argument>spark_join_kafka.py</argument>
-            <file>/home/hadoop/bigdata_spark/spark_join_kafka.py#spark_join_kafka.py</file>
+            <argument>org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1</argument>
+            <argument>spark_master_pipeline.py</argument>
+            <file>/home/hadoop/bigdata_spark/spark_master_pipeline.py#spark_master_pipeline.py</file>
         </shell>
         <ok to="end"/>
         <error to="fail"/>
