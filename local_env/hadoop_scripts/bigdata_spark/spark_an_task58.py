@@ -26,7 +26,7 @@ def process_liquidity(record):
             status = "Low"
 
         result.append(Row(symbol=symbol, calc_date=t_date, liquidity_status=status))
-    
+
     return result
 
 spark = SparkSession.builder.appName("Spark_Task58_Liquidity").getOrCreate()

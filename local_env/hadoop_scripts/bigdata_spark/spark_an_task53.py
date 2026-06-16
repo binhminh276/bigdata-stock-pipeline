@@ -1,64 +1,64 @@
+import os
 from pyspark.sql import SparkSession
-from pyspark.sql import Row
+from pyspark.sql.functions import col, to_date, dayofweek, row_number, lag, coalesce, when, sum as _sum
+from pyspark.sql.window import Window
 
-def process_streaks(record):
-    symbol = record[0]
-    data = list(record[1]) 
+os.environ['SPARK_LOCAL_IP'] = '127.0.0.1'
 
-    unique_data = {}
-    for row in data:
-        t_date = row[0]
-        s_time = row[1]
-        u_day = row[2]
-        d_day = row[3]
-
-        if t_date not in unique_data or s_time > unique_data[t_date]['scrape_time']:
-            unique_data[t_date] = {
-                'scrape_time': s_time, 
-                'up_day': u_day, 
-                'down_day': d_day
-            }
-
-    streak_up = 0
-    streak_down = 0
-    result = []
-
-    for t_date in sorted(unique_data.keys()):
-        u_day = unique_data[t_date]['up_day']
-        d_day = unique_data[t_date]['down_day']
-
-        if u_day == 1:
-            streak_up += 1
-            streak_down = 0
-        elif d_day == 1:
-            streak_down += 1
-            streak_up = 0
-
-        result.append(Row(symbol=symbol, calc_date=t_date, up_days_count=streak_up, down_days_count=streak_down))
-    
-    return result
-
-spark = SparkSession.builder.appName("Spark_Task53_Streak").getOrCreate()
+spark = SparkSession.builder.appName("Spark_Task53_Streak_Fixed").getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
+df = spark.read.parquet("/user/hadoop/stock_cleaned/")
 
-rdd = spark.sparkContext.textFile("/user/hadoop/stock_cleaned_csv/")
+df_date = df.withColumn(
+    "norm_date",
+    coalesce(
+        to_date(col("Trading_Date"), "yyyy-MM-dd"),
+        to_date(col("Trading_Date"), "dd/MM/yyyy"),
+        to_date(col("Trading_Date"), "dd-MM-dash")
+    )
+).filter(col("norm_date").isNotNull()) \
+ .filter((dayofweek(col("norm_date")) != 1) & (dayofweek(col("norm_date")) != 7
 
-parsed_rdd = rdd.map(lambda line: line.split(',')) \
-    .filter(lambda parts: len(parts) >= 9 and parts[0].lower() != 'symbol') \
-    .map(lambda parts: (
-        parts[0],
-        (
-            parts[1], 
-            parts[2], 
-            1 if float(parts[6]) > float(parts[4]) else 0, 
-            1 if float(parts[6]) < float(parts[4]) else 0
-        )
-    ))
+window_day = Window.partitionBy("Symbol", "norm_date").orderBy(col("Scrape_Time").desc())
+df_eod = df_date.withColumn("rn", row_number().over(window_day)).filter(col("rn") == 1).drop("rn")
 
-result_rdd = parsed_rdd.groupByKey().flatMap(process_streaks)
+window_timeline = Window.partitionBy("Symbol").orderBy("norm_date")
 
-df = spark.createDataFrame(result_rdd)
-df.write.mode("overwrite").json("/user/hadoop/stock_result/result_spark_task53")
+df_with_prev = df_eod.withColumn("prev_close", lag("Close", 1).over(window_timeline))
+
+df_signals = df_with_prev.withColumn(
+    "trend_signal",
+    when(col("prev_close").isNull(), 0)                    
+    .when(col("Close") > col("prev_close"), 1)             
+    .when(col("Close") < col("prev_close"), -1)            
+    .otherwise(0)                                      
+)
+
+#
+df_island = df_signals.withColumn(
+    "is_new_streak",
+    when(col("trend_signal") != lag("trend_signal", 1).over(window_timeline), 1).otherwise(0)
+).withColumn(
+    "streak_id",
+    _sum("is_new_streak").over(window_timeline)
+)
+
+window_streak_run = Window.partitionBy("Symbol", "streak_id").orderBy("norm_date")
+
+df_result = df_island.withColumn(
+    "up_days_count",
+    when(col("trend_signal") == 1, row_number().over(window_streak_run)).otherwise(0)
+).withColumn(
+    "down_days_count",
+    when(col("trend_signal") == -1, row_number().over(window_streak_run)).otherwise(0)
+).select(
+    col("Symbol").alias("symbol"),          
+    col("norm_date").alias("calc_date"),    
+    "up_days_count",                        
+    "down_days_count"                       
+).orderBy("symbol", "calc_date")
+
+output_path = "/user/hadoop/stock_result/result_spark_task53"
+df_result.write.mode("overwrite").json(output_path)
 
 spark.stop()
- 
