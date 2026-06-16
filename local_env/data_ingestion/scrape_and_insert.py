@@ -77,6 +77,7 @@ def run_pipeline_realtime():
             except Exception as e:
                 print(f"Lỗi: {e}")
             time.sleep(0.5)
+
         # NHỊP 3: XUẤT RA FILE LÀM BỘ ĐỆM
         if scraped_data:
             df_new = pd.DataFrame(scraped_data)

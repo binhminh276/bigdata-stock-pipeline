@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS tbl_raw_stock (
     Open DECIMAL(10, 2),
     High DECIMAL(10, 2),
     Low DECIMAL(10, 2),
-    PRIMARY KEY (Symbol, Scrape_Time)   
+    PRIMARY KEY (Symbol, Scrape_Time, Trading_Date)   
 );
 
 
