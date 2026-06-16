@@ -18,7 +18,7 @@ class BusinessLogicLayer:
 
     def get_daily_data(self, symbol, start_date, end_date):
         mask = (self.df['symbol'] == symbol) & (self.df['trading_date'] >= start_date) & (self.df['trading_date'] <= end_date)
-        df_filtered = self.df[mask].sort_values('trading_date')
+        df_filtered = self.df[mask].sort_values(['trading_date', 'scrape_time'])
         daily_df = df_filtered.groupby('trading_date').agg({
             'open': 'first',
             'high': 'max',
@@ -44,11 +44,10 @@ class BusinessLogicLayer:
         return data
 
     def get_monthly_data(self, symbol, target_year):
-        mask = (self.df['symbol'] == symbol) & (self.df['trading_date'].dt.year == int(target_year))
-        data = self.df[mask].copy()
-        if not data.empty:
-            data['month'] = data['trading_date'].dt.month
-        return data
+        daily_data = self.get_daily_data(symbol, f"{target_year}-01-01", f"{target_year}-12-31")
+        if not daily_data.empty:
+            daily_data['month'] = daily_data['trading_date'].dt.month
+        return daily_data
 
     def get_yearly_stacked_data(self, target_years):
         data = self.df.copy()

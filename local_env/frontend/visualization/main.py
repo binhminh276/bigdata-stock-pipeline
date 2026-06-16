@@ -10,9 +10,9 @@ if __name__ == "__main__":
     bll = BusinessLogicLayer(dal)
     gui = PresentationLayer(bll)
     
-    # gui.plot_intraday_price_volume(symbol="VCB", target_date="2026-06-09")
+    # gui.plot_intraday_price_volume(symbol="VCB", target_date="2026-06-16")
     # gui.plot_intraday_vwap(symbol="VCB", target_date="2026-06-09")
-    gui.plot_daily_candlestick(symbol="VIB", start_date="2026-06-01", end_date="2026-06-09")
+    gui.plot_daily_candlestick(symbol="VCB", start_date="2026-06-01", end_date="2026-06-16")
     # gui.plot_daily_moving_average(symbol="VCB", start_date="2025-01-01", end_date="2026-06-09")
     # gui.plot_daily_volume(symbol="VCB", start_date="2026-05-01", end_date="2026-06-09")
     # gui.plot_monthly_volatility(symbol="VCB", target_year="2025")
