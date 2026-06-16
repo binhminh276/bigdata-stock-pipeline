@@ -10,10 +10,10 @@ for line in sys.stdin:
 
     symbol = parts[0]
     calc_date = parts[1]
-    scrape_time = parts[2] 
+    scrape_time = parts[2]
 
     try:
         volume = float(parts[5])
         print(f"{symbol}\t{calc_date},{scrape_time},{volume}")
     except ValueError:
-        continue
+        continue        

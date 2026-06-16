@@ -8,7 +8,7 @@ daily_records = {}
 def process_and_print(symbol, records_dict):
     for t_date in sorted(records_dict.keys()):
         vol = records_dict[t_date]['volume']
-        
+
         if vol >= 10000000:
             status = "High"
         elif vol >= 5000000:
@@ -35,12 +35,14 @@ for line in sys.stdin:
     if current_symbol == symbol:
         if t_date not in daily_records or s_time > daily_records[t_date]['scrape_time']:
             daily_records[t_date] = {'scrape_time': s_time, 'volume': volume}
-    else:
+   else:
         if current_symbol:
             process_and_print(current_symbol, daily_records)
-        
+
         current_symbol = symbol
         daily_records = {t_date: {'scrape_time': s_time, 'volume': volume}}
 
 if current_symbol:
     process_and_print(current_symbol, daily_records)
+
+
