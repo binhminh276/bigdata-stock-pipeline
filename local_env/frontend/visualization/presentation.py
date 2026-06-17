@@ -95,19 +95,22 @@ class PresentationLayer:
         plt.tight_layout()
         plt.show()
 
-    def plot_monthly_volatility(self, symbol, target_year):
-        data = self.bll.get_monthly_data(symbol, target_year)
-        if data.empty: return
+    def plot_monthly_volatility(self, symbol, start_month, start_year, end_month, end_year):
+        data = self.bll.get_monthly_data(symbol, start_month, start_year, end_month, end_year)
+        if data is None or data.empty: 
+            return
             
-        months = sorted(data['month'].unique())
-        plot_data = [data[data['month'] == m]['close'].dropna() for m in months]
+        unique_periods = data[['sort_key', 'period']].drop_duplicates().sort_values('sort_key')
+        months_labels = unique_periods['period'].tolist()
+        plot_data = [data[data['sort_key'] == key]['close'].dropna() for key in unique_periods['sort_key']]
         
-        plt.figure(figsize=(10, 6))
-        plt.boxplot(plot_data, labels=months)
-        plt.title(f'Phân phối biến động giá theo tháng - {symbol} ({target_year})')
+        plt.figure(figsize=(12, 6))
+        plt.boxplot(plot_data, labels=months_labels)
+        plt.title(f'Phân phối biến động giá theo tháng - {symbol} ({start_month}/{start_year} - {end_month}/{end_year})')
         plt.xlabel('Tháng')
         plt.ylabel('Giá đóng cửa')
         plt.grid(True, axis='y', linestyle='--', alpha=0.5)
+        plt.xticks(rotation=45)
         plt.tight_layout()
         plt.show()
 

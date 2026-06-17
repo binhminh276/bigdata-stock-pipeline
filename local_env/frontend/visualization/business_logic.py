@@ -43,10 +43,16 @@ class BusinessLogicLayer:
             data.loc[0, 'color'] = 'green'
         return data
 
-    def get_monthly_data(self, symbol, target_year):
-        daily_data = self.get_daily_data(symbol, f"{target_year}-01-01", f"{target_year}-12-31")
+    def get_monthly_data(self, symbol, start_month, start_year, end_month, end_year):
+        start_date = pd.to_datetime(f"{start_year}-{start_month:02d}-01")
+        end_date = pd.to_datetime(f"{end_year}-{end_month:02d}-01") + pd.offsets.MonthEnd(0)
+        
+        daily_data = self.get_daily_data(symbol, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+        
         if not daily_data.empty:
-            daily_data['month'] = daily_data['trading_date'].dt.month
+            daily_data['period'] = daily_data['trading_date'].dt.strftime('%m/%Y')
+            daily_data['sort_key'] = daily_data['trading_date'].dt.strftime('%Y-%m')
+            
         return daily_data
 
     def get_yearly_stacked_data(self, target_years):
