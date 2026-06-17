@@ -1,5 +1,5 @@
 # BIGDATA-STOCK-PIPELINE
-Hệ thống xử lý dữ liệu lớn (Big Data) phân tích thị trường chứng khoán Việt Nam. Dự án tích hợp hệ sinh thái Hadoop (HDFS, MapReduce, Hive, Sqoop, Oozie) cùng các dịch vụ đám mây AWS (S3, RDS). Kiến trúc bao gồm một lớp middleware sử dụng Apache Drill để truy vấn dữ liệu phân tán và được trực quan hóa thông qua giao diện Streamlit.
+Hệ thống xử lý dữ liệu lớn (Big Data) phân tích thị trường chứng khoán Việt Nam. Dự án tích hợp hệ sinh thái Hadoop (HDFS, MapReduce, Hive, Sqoop, Airflow) cùng các dịch vụ đám mây AWS (S3, RDS). Kiến trúc bao gồm một lớp middleware sử dụng Apache Drill để truy vấn dữ liệu phân tán và được trực quan hóa thông qua giao diện Streamlit.
 
 ## Danh sách thành viên nhóm
 - Nguyễn Phúc An
