@@ -69,7 +69,7 @@ Thư mục chứa các mã nguồn và cấu hình chuyên biệt để chạy t
 
 ### Môi trường Local (local_env)
 Thư mục chứa mã nguồn chạy cục bộ trên máy cá nhân, dùng để kiểm thử độc lập trước khi đưa lên Cloud.
-- data_ingestion: Script Python cào dữ liệu thô (Raw data) về máy tính cá nhân.
+- data_ingestion: Script Python cào dữ liệu thô (Raw data) và Query insert vào MySQL.
 - database: Chứa file SQL khởi tạo các bảng dữ liệu gốc trong MySQL Local.
 - frontend: Mã nguồn giao diện Streamlit kết nối với dữ liệu cục bộ.
 - hadoop_scripts: Chứa các file HiveQL, Mapper, Reducer để chạy tính toán trên Hadoop giả lập (Pseudo-Distributed) ở máy tính cá nhân.
