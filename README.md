@@ -24,11 +24,11 @@ Hệ thống xử lý dữ liệu lớn (Big Data) phân tích thị trường c
 - Môi trường: Ubuntu Server và AWS Cloud
 ## 4. Kiến trúc hệ thống
 Dự án được thiết kế và triển khai thành kiến trúc ELT trên 2 môi trường: môi trường máy chủ cục bộ (Local) và nền tảng đám mây (AWS Cloud). Cả hai đều hoạt động dựa trên luồng xử lý (Data Pipeline) chuẩn:
-- Lớp Thu thập: Cào dữ liệu chứng khoán ngân hàng từ các nguồn tài chính bằng Python.
+- Lớp Thu thập: Cào dữ liệu chứng khoán ngân hàng từ các nguồn tài chính bằng Python (5 phút/lần).
 - Lớp Lưu trữ thô: Dữ liệu được đẩy vào HDFS (đối với Local) hoặc Amazon S3 (đối với Cloud).
 - Lớp Tiền xử lý và Tính toán: Sử dụng Apache Hive để làm sạch dữ liệu thô và Apache Spark để tính toán phân tán các chỉ số kỹ thuật.
 - Lớp Truyền tải và Lưu trữ đích: Đẩy dữ liệu đã xử lý qua Apache Kafka / Apache Sqoop và lưu trữ tập trung tại MySQL / Amazon RDS.
-- Lớp Điều phối: Tự động hóa toàn bộ tiến trình bằng Airflow (Local) và AWS Step Functions (Cloud).
+- Lớp Điều phối: Tự động hóa toàn bộ tiến trình bằng Airflow (Local) và AWS Step Functions (Cloud) (2 lần/ngày).
 - Lớp Giao diện: Apache Drill kết nối đa nguồn dữ liệu, cung cấp endpoint cho Streamlit vẽ biểu đồ trực quan.
 
 ## 5. Các chức năng chính
