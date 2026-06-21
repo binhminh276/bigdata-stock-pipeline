@@ -1,62 +1,59 @@
 import os
+import pandas as pd
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, to_date, dayofweek, row_number, lag, coalesce, when, sum as _sum
+from pyspark.sql.functions import col, dayofweek, row_number
 from pyspark.sql.window import Window
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType
 
 os.environ['SPARK_LOCAL_IP'] = '127.0.0.1'
 
-spark = SparkSession.builder.appName("Spark_Task53_Streak_Fixed").getOrCreate()
+spark = SparkSession.builder.appName("Spark_Task53_Streak_Simple").getOrCreate()
 spark.sparkContext.setLogLevel("ERROR")
 df = spark.read.parquet("/user/hadoop/stock_cleaned/")
 
-df_date = df.withColumn(
-    "norm_date",
-    coalesce(
-        to_date(col("Trading_Date"), "yyyy-MM-dd"),
-        to_date(col("Trading_Date"), "dd/MM/yyyy"),
-        to_date(col("Trading_Date"), "dd-MM-dash")
-    )
-).filter(col("norm_date").isNotNull()) \
- .filter((dayofweek(col("norm_date")) != 1) & (dayofweek(col("norm_date")) != 7
+df_date = df.filter((dayofweek(col("trading_date")) != 1) & (dayofweek(col("trading_date")) != 7))
 
-window_day = Window.partitionBy("Symbol", "norm_date").orderBy(col("Scrape_Time").desc())
+window_day = Window.partitionBy("symbol", "trading_date").orderBy(col("scrape_time").desc())
 df_eod = df_date.withColumn("rn", row_number().over(window_day)).filter(col("rn") == 1).drop("rn")
 
-window_timeline = Window.partitionBy("Symbol").orderBy("norm_date")
+def calc_streak(pdf: pd.DataFrame) -> pd.DataFrame:
+    pdf = pdf.sort_values("trading_date")
+    up_list, down_list = [], []
+    streak_up, streak_down, prev_close = 0, 0, None
 
-df_with_prev = df_eod.withColumn("prev_close", lag("Close", 1).over(window_timeline))
+    for close in pdf["close"]:
+        if prev_close is None:
+            streak_up, streak_down = 0, 0
+        elif close > prev_close:
+            streak_up += 1
+            streak_down = 0
+        elif close < prev_close:
+            streak_down += 1
+            streak_up = 0
+        else:
+            streak_up, streak_down = 0, 0
+        up_list.append(streak_up)
+        down_list.append(streak_down)
+        prev_close = close
 
-df_signals = df_with_prev.withColumn(
-    "trend_signal",
-    when(col("prev_close").isNull(), 0)                    
-    .when(col("Close") > col("prev_close"), 1)             
-    .when(col("Close") < col("prev_close"), -1)            
-    .otherwise(0)                                      
-)
+    pdf["up_days_count"] = up_list
+    pdf["down_days_count"] = down_list
+    return pdf[["symbol", "trading_date", "up_days_count", "down_days_count"]]
 
-#
-df_island = df_signals.withColumn(
-    "is_new_streak",
-    when(col("trend_signal") != lag("trend_signal", 1).over(window_timeline), 1).otherwise(0)
-).withColumn(
-    "streak_id",
-    _sum("is_new_streak").over(window_timeline)
-)
+schema = StructType([
+    StructField("symbol", StringType()),
+    StructField("trading_date", DateType()),
+    StructField("up_days_count", IntegerType()),
+    StructField("down_days_count", IntegerType()),
+])
 
-window_streak_run = Window.partitionBy("Symbol", "streak_id").orderBy("norm_date")
-
-df_result = df_island.withColumn(
-    "up_days_count",
-    when(col("trend_signal") == 1, row_number().over(window_streak_run)).otherwise(0)
-).withColumn(
-    "down_days_count",
-    when(col("trend_signal") == -1, row_number().over(window_streak_run)).otherwise(0)
-).select(
-    col("Symbol").alias("symbol"),          
-    col("norm_date").alias("calc_date"),    
-    "up_days_count",                        
-    "down_days_count"                       
-).orderBy("symbol", "calc_date")
+df_result = df_eod.groupBy("symbol").applyInPandas(calc_streak, schema=schema) \
+    .select(
+        "symbol",
+        col("trading_date").alias("calc_date"),
+        "up_days_count",
+        "down_days_count"
+    ).orderBy("symbol", "calc_date")
 
 output_path = "/user/hadoop/stock_result/result_spark_task53"
 df_result.write.mode("overwrite").json(output_path)
